@@ -83,17 +83,30 @@
 
 </div>
 
-```mermaid
-%%{init: {'theme':'base','themeVariables':{'primaryColor':'#FFC400','primaryTextColor':'#111','primaryBorderColor':'#FF8C00','lineColor':'#FF8C00','fontFamily':'Fira Code, monospace'}}}%%
-flowchart LR
-    A(["🌐 Truy cập website"]) --> B(["📋 Xem & copy script"])
-    B --> C(["▶️ Chạy trong PowerShell"])
-    C --> D(["🏆 Máy mượt hơn!"])
-    style A fill:#FFD700,stroke:#FF8C00,stroke-width:2px,color:#111
-    style B fill:#FFC400,stroke:#FF8C00,stroke-width:2px,color:#111
-    style C fill:#FFA500,stroke:#FF6A00,stroke-width:2px,color:#111
-    style D fill:#FF6A00,stroke:#FF3D00,stroke-width:2px,color:#fff
-```
+<table align="center">
+<tr>
+<td align="center" width="25%">
+<h1>1️⃣</h1>
+<b>TRUY CẬP</b><br/>
+<sub>Mở website win-hau.oneapp.dev</sub>
+</td>
+<td align="center" width="25%">
+<h1>2️⃣</h1>
+<b>XEM & COPY</b><br/>
+<sub>Đọc script rồi sao chép một chạm</sub>
+</td>
+<td align="center" width="25%">
+<h1>3️⃣</h1>
+<b>CHẠY</b><br/>
+<sub>Dán và chạy trong PowerShell</sub>
+</td>
+<td align="center" width="25%">
+<h1>🏆</h1>
+<b>HOÀN TẤT</b><br/>
+<sub>Tận hưởng chiếc máy mượt hơn</sub>
+</td>
+</tr>
+</table>
 
 <br/>
 
