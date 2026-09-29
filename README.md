@@ -1,81 +1,67 @@
+<div align="center">
+
 # ⚡ Win Optimizer
 
-<p align="center">
-  <strong>PowerShell Script tối ưu và tinh chỉnh Windows</strong>
-</p>
+**Script PowerShell giúp tối ưu Windows — gọn, nhanh, dễ dùng.**
 
-<p align="center">
-  <a href="https://win-hau.oneapp.dev/">
-    <img src="https://img.shields.io/badge/Website-Win%20Optimizer-0078D4?style=for-the-badge&logo=windows&logoColor=white" alt="Website">
-  </a>
-  <img src="https://img.shields.io/badge/Platform-Windows-0078D4?style=for-the-badge&logo=windows&logoColor=white" alt="Windows">
-  <img src="https://img.shields.io/badge/Language-PowerShell-5391FE?style=for-the-badge&logo=powershell&logoColor=white" alt="PowerShell">
-</p>
+[![Website](https://img.shields.io/badge/Website-win--hau.oneapp.dev-2563eb?style=for-the-badge&logo=googlechrome&logoColor=white)](https://win-hau.oneapp.dev/)
+![PowerShell](https://img.shields.io/badge/PowerShell-5391FE?style=for-the-badge&logo=powershell&logoColor=white)
+![Windows](https://img.shields.io/badge/Windows-0078D6?style=for-the-badge&logo=windows&logoColor=white)
 
-<p align="center">
-  Một script PowerShell hỗ trợ tối ưu, tinh chỉnh và quản lý một số thành phần trên hệ điều hành Windows.
-</p>
+### 👉 [Xem hướng dẫn chi tiết tại win-hau.oneapp.dev](https://win-hau.oneapp.dev/) 👈
+
+</div>
 
 ---
 
-## 🌐 Website chính thức
+## 📖 Giới thiệu
 
-Toàn bộ thông tin chi tiết, mã nguồn script, hướng dẫn sử dụng và các tài liệu liên quan được cung cấp tại:
+**Win Optimizer** là một script PowerShell (`main.ps1`) được viết để tối ưu hiệu năng Windows, giúp máy chạy mượt hơn mà không cần cài thêm phần mềm nặng nề.
 
-> **https://win-hau.oneapp.dev/**
+Toàn bộ thông tin chi tiết — từ xem mã nguồn, cách sử dụng, cách kiểm tra đến cách gỡ bỏ — đều được tổng hợp đầy đủ trên website chính thức:
 
-Website có giao diện xem mã nguồn trực tuyến, giúp người dùng dễ dàng kiểm tra nội dung script trước khi thực thi.
+> 🌐 **https://win-hau.oneapp.dev/**
 
----
+## ✨ Website có gì?
 
-## 📌 Giới thiệu
+| | Nội dung |
+|---|---|
+| 👀 | Xem trực tiếp mã nguồn `main.ps1`, tự động đồng bộ với GitHub |
+| 📋 | Sao chép toàn bộ code chỉ với một cú nhấp |
+| ✅ | Hướng dẫn kiểm tra các Scheduled Task đã được đăng ký hay chưa |
+| 🗑️ | Hướng dẫn hủy đăng ký / gỡ bỏ hoàn toàn |
 
-**Win Optimizer** là một script PowerShell được xây dựng nhằm hỗ trợ người dùng tối ưu và tinh chỉnh Windows thông qua các thao tác tự động.
+## 🚀 Bắt đầu nhanh
 
-Script hướng đến những người muốn:
+1. Truy cập **[win-hau.oneapp.dev](https://win-hau.oneapp.dev/)**
+2. Làm theo hướng dẫn trên trang
+3. Tận hưởng chiếc máy nhanh hơn 🎉
 
-- Tối ưu trải nghiệm sử dụng Windows.
-- Thực hiện các tinh chỉnh hệ thống nhanh chóng.
-- Quản lý một số tác vụ và thiết lập liên quan đến Windows.
-- Kiểm tra, đăng ký hoặc hủy đăng ký Scheduled Task.
-- Xem trước mã nguồn trước khi chạy.
-- Hạn chế việc phải thực hiện thủ công nhiều thao tác trong Windows.
+## 🔍 Minh bạch mã nguồn
 
-> ⚠️ Script có thể thực hiện các thay đổi ở cấp hệ thống. Hãy đọc kỹ mã nguồn và tạo bản sao lưu cần thiết trước khi sử dụng.
+Toàn bộ script là mã nguồn mở, bạn có thể đọc trước khi chạy:
 
----
+- 📄 Trong repo này: [`main.ps1`](./main.ps1)
+- 🌐 Xem trực quan trên web: [win-hau.oneapp.dev](https://win-hau.oneapp.dev/)
 
-## ✨ Tính năng
+## ⚠️ Lưu ý
 
-Một số chức năng chính của dự án bao gồm:
+- Nên **đọc qua code** trước khi chạy bất kỳ script nào trên máy của bạn.
+- Nên **tạo điểm khôi phục hệ thống (System Restore Point)** trước khi tối ưu.
+- Script được cung cấp "nguyên trạng", người dùng tự chịu trách nhiệm khi sử dụng.
 
-- Tối ưu và tinh chỉnh hệ điều hành Windows.
-- Tự động hóa các thao tác quản trị hệ thống.
-- Hỗ trợ làm việc với Windows Scheduled Task.
-- Kiểm tra trạng thái các tác vụ đã đăng ký.
-- Hủy đăng ký các tác vụ được tạo bởi script.
-- Hiển thị mã nguồn PowerShell trực tuyến.
-- Hỗ trợ sao chép toàn bộ mã nguồn từ website.
-- Cung cấp hướng dẫn sử dụng và xử lý lỗi cơ bản.
+## 🤝 Đóng góp
 
-Các tính năng cụ thể có thể được cập nhật hoặc thay đổi theo từng phiên bản của script. Vui lòng truy cập website để xem thông tin mới nhất.
+Mọi ý kiến đóng góp, báo lỗi hay đề xuất tính năng đều được chào đón! Hãy mở một [Issue](../../issues) hoặc gửi [Pull Request](../../pulls).
 
----
+## ⭐ Ủng hộ dự án
 
-## 🖥️ Yêu cầu hệ thống
-
-- Windows 10 hoặc Windows 11.
-- PowerShell.
-- Quyền Administrator để thực hiện đầy đủ các thao tác hệ thống.
-- Kết nối Internet nếu script hoặc website yêu cầu tải nội dung từ GitHub.
+Nếu thấy script hữu ích, hãy tặng repo một **⭐ Star** để mình có thêm động lực nhé!
 
 ---
 
-## 🚀 Cách sử dụng
+<div align="center">
 
-### 1. Truy cập website
+Made with ❤️ by [minhhau361](https://github.com/minhhau361)
 
-Mở website chính thức:
-
-```text
-https://win-hau.oneapp.dev/
+</div>
