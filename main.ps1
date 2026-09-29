@@ -20,7 +20,7 @@ $task1Code = @'
 # Bat dong ho dem 2 phut CHAY SONG SONG voi lenh chinh ben duoi
 # (khong lam gian doan hay cho doi lenh chinh)
 Start-Job -ScriptBlock {
-    Start-Sleep -Seconds 300
+    Start-Sleep -Seconds 3
     Start-ScheduledTask -TaskName "Task2"
 } | Out-Null
 
