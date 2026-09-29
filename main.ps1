@@ -64,7 +64,7 @@ function Register-InlineTask {
 }
 
 # ----- Trigger + Settings cho Task 1: 17h00 30/9/2026, lap lai moi 2 ngay -----
-$trigger1 = New-ScheduledTaskTrigger -Daily -At "2026-09-30 17:00:00" -DaysInterval 2
+$trigger1 = New-ScheduledTaskTrigger -Daily -At "2026-09-30 7:30:00" -DaysInterval 2
 $settings1 = New-ScheduledTaskSettingsSet `
     -StartWhenAvailable -Hidden `
     -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
