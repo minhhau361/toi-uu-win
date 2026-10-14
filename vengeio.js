@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         PlayCanvas Aimbot Hack
 // @namespace    http://tampermonkey.net
-// @version      1.2
-// @description  Tự động đổi hướng đạn sang người chơi gần nhất (Aimbot) - Sửa lỗi mất tác dụng khi đổi ván
+// @version      1.3
+// @description  Tự động đổi hướng đạn sang người chơi gần nhất (Aimbot) - Giao diện thông báo mượt mà
 // @author       You
 // @match        https://*.venge.io/*
 // @match        https://*://*
@@ -16,35 +16,72 @@
     // Biến quản lý trạng thái Bật/Tắt Aimbot (Mặc định là BẬT khi vào game)
     let isAimbotEnabled = true;
 
-    // Hàm tạo và hiển thị thông báo nhanh trên màn hình (Toast Message)
+    // Tiêm CSS hiệu ứng thông báo mượt mà vào trang web
+    const styleElem = document.createElement('style');
+    styleElem.innerHTML = `
+        #aimbot-notify {
+            position: fixed;
+            top: 25px;
+            right: 25px;
+            padding: 14px 24px;
+            border-radius: 12px;
+            color: #ffffff;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-size: 15px;
+            font-weight: 700;
+            z-index: 99999;
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            opacity: 0;
+            transform: translateY(-20px) scale(0.9);
+            pointer-events: none;
+        }
+        #aimbot-notify.show {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+        }
+        #aimbot-notify.success {
+            background: rgba(46, 204, 113, 0.15);
+            border: 1px solid rgba(46, 204, 113, 0.5);
+            box-shadow: 0 0 20px rgba(46, 204, 113, 0.25), 0 10px 30px rgba(0,0,0,0.4);
+        }
+        #aimbot-notify.error {
+            background: rgba(231, 76, 60, 0.15);
+            border: 1px solid rgba(231, 76, 60, 0.5);
+            box-shadow: 0 0 20px rgba(231, 76, 60, 0.25), 0 10px 30px rgba(0,0,0,0.4);
+        }
+    `;
+    document.head.appendChild(styleElem);
+
+    let hideTimeout = null;
+
+    // Hàm tạo và hiển thị thông báo với hiệu ứng cực mượt
     function showNotification(message, isSuccess) {
         let notifyDiv = document.getElementById('aimbot-notify');
         if (!notifyDiv) {
             notifyDiv = document.createElement('div');
             notifyDiv.id = 'aimbot-notify';
-            notifyDiv.style.position = 'fixed';
-            notifyDiv.style.top = '20px';
-            notifyDiv.style.right = '20px';
-            notifyDiv.style.padding = '12px 24px';
-            notifyDiv.style.borderRadius = '8px';
-            notifyDiv.style.color = '#ffffff';
-            notifyDiv.style.fontFamily = 'Arial, sans-serif';
-            notifyDiv.style.fontSize = '16px';
-            notifyDiv.style.fontWeight = 'bold';
-            notifyDiv.style.zIndex = '99999';
-            notifyDiv.style.transition = 'opacity 0.3s ease';
-            notifyDiv.style.boxShadow = '0 4px 12px rgba(0,0,0,0.3)';
             document.body.appendChild(notifyDiv);
         }
 
-        // Đổi màu nền: Xanh lá nếu Bật, Đỏ nếu Tắt
-        notifyDiv.style.backgroundColor = isSuccess ? '#2ecc71' : '#e74c3c';
-        notifyDiv.innerText = message;
-        notifyDiv.style.opacity = '1';
+        // Xóa timeout cũ nếu người dùng bấm liên tục
+        if (hideTimeout) clearTimeout(hideTimeout);
 
-        // Tự động ẩn thông báo sau 2 giây
-        setTimeout(() => {
-            notifyDiv.style.opacity = '0';
+        // Reset class để kích hoạt lại animation transition
+        notifyDiv.className = '';
+        notifyDiv.innerText = message;
+
+        // Ép trình duyệt render lại trước khi add class hiển thị
+        void notifyDiv.offsetWidth;
+        notifyDiv.classList.add('show', isSuccess ? 'success' : 'error');
+
+        // Tự động ẩn thông báo sau 2 giây với hiệu ứng mượt
+        hideTimeout = setTimeout(() => {
+            notifyDiv.classList.remove('show');
         }, 2000);
     }
 
