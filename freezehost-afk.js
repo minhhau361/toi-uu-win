@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         FreezeHost Auto AFK + Ads + Panel
 // @namespace    http://tampermonkey.net/
-// @version      4.1
-// @description  Auto Start Earning, giữ Hold to Start, xem quảng cáo thưởng, bảng thống kê kéo thả (Alt+Z), delay ngẫu nhiên, chống lặp vô tận, theo dõi Daily Reset và tự xóa thống kê khi reset. Chỉ chạy ở chế độ desktop.
+// @version      4.2
+// @description  Auto Start Earning, giữ Hold to Start, xem quảng cáo thưởng, bảng thống kê kéo thả (Alt+Z), delay ngẫu nhiên, chống lặp vô tận, theo dõi Daily Reset, giữ màn hình sáng cho tới khi cày hết daily. Chỉ chạy ở chế độ desktop.
 // @match        https://free.freezehost.pro/*
 // @run-at       document-idle
 // @grant        none
@@ -34,6 +34,7 @@
     loopMax: 4,                               // số lần về /coins bất thường trong cửa sổ => tự dừng
     resetJumpMs: 10 * 60 * 1000,              // mốc reset nhảy tới trước >10 phút => đã reset
     resetStaleMs: 20 * 1000,                  // quá mốc reset >20s mà không thấy đồng hồ => đã reset
+    wakeRetryMs: 15000,                       // thử xin lại Wake Lock nếu bị từ chối
     tick: 1500,
     hideAds: true,                            // đặt false nếu quảng cáo thưởng không hoàn thành được
     maxLog: 60,
@@ -59,7 +60,7 @@
 
   const ZERO_STATS = { totalCoins: 0, totalAfkMs: 0, sessions: 0, ads: 0 };
   const stats = Object.assign({}, ZERO_STATS, LS.get('fh_stats', {}));
-  const ui = Object.assign({ x: 20, y: 80, visible: true, paused: false }, LS.get('fh_ui', {}));
+  const ui = Object.assign({ x: 20, y: 80, visible: true, paused: false, keepAwake: true }, LS.get('fh_ui', {}));
   let logs = LS.get('fh_log', []);
   let logVer = 0;
   let status = 'Khởi động...';
@@ -237,6 +238,65 @@
     ss.set('fh_daily_base', d ? d.cur : 0);
     log(msg);
   }
+
+  // ---------- Giữ màn hình sáng (Screen Wake Lock API) ----------
+  // Giữ sáng khi: script đang chạy (không tạm dừng), người dùng bật công tắc,
+  // và chưa cày hết daily. Hết daily thì tự nhả, màn hình được tắt theo cài đặt hệ thống.
+  // Khi daily reset và script tự chạy tiếp thì sẽ tự xin lại.
+  // Lưu ý: Wake Lock chỉ hoạt động khi tab đang hiển thị, trình duyệt sẽ tự nhả khi tab bị ẩn
+  // và script sẽ tự xin lại khi tab hiện lại.
+  const wakeSupported = 'wakeLock' in navigator;
+  let wakeLock = null;
+  let wakePending = false;
+  let wakeFailAt = 0;
+  let wakeAnnounced = false;
+  let wakeWhy = '';
+
+  const limitHit = () => limitStopped || !!(info.daily && info.daily.cur >= info.daily.max);
+  const wantAwake = () => wakeSupported && ui.keepAwake && !ui.paused && !limitHit();
+
+  async function acquireWake() {
+    if (wakeLock || wakePending || !wakeSupported) return;
+    if (document.visibilityState !== 'visible') return;
+    if (now() - wakeFailAt < CFG.wakeRetryMs) return;
+    wakePending = true;
+    try {
+      const lock = await navigator.wakeLock.request('screen');
+      wakeLock = lock;
+      lock.addEventListener('release', () => { if (wakeLock === lock) wakeLock = null; });
+      wakeFailAt = 0;
+      if (!wakeAnnounced) { wakeAnnounced = true; log('Bật giữ sáng màn hình'); }
+    } catch (e) {
+      wakeFailAt = now();
+      console.warn('[FH-AFK] Không bật được Wake Lock:', e && e.message);
+    } finally {
+      wakePending = false;
+    }
+  }
+
+  async function releaseWake(why) {
+    if (!wakeLock) return;
+    const lock = wakeLock;
+    wakeLock = null;
+    try { await lock.release(); } catch (e) {}
+    wakeAnnounced = false;
+    log('Tắt giữ sáng màn hình: ' + why);
+  }
+
+  function syncWake() {
+    if (!wakeSupported) { wakeWhy = 'Không hỗ trợ'; return; }
+    if (wantAwake()) {
+      wakeWhy = '';
+      if (!wakeLock) acquireWake();
+      return;
+    }
+    wakeWhy = !ui.keepAwake ? 'Đã tắt' : ui.paused ? 'Tạm dừng' : 'Đã hết daily';
+    if (wakeLock) releaseWake(wakeWhy.toLowerCase());
+  }
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') { wakeFailAt = 0; syncWake(); }
+  });
 
   // ---------- Daily Reset: xóa thống kê khi bộ đếm daily về 0 ----------
   // Nhận biết reset bằng 3 dấu hiệu:
@@ -445,6 +505,7 @@
     refresh: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg>',
     list: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/></svg>',
     grip: '<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.4"/><circle cx="15" cy="6" r="1.4"/><circle cx="9" cy="12" r="1.4"/><circle cx="15" cy="12" r="1.4"/><circle cx="9" cy="18" r="1.4"/><circle cx="15" cy="18" r="1.4"/></svg>',
+    sun: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
   };
 
   function buildUI() {
@@ -471,7 +532,7 @@
         button:focus-visible, #fh-toggle:focus-visible { outline: 2px solid var(--tone, #60a5fa); outline-offset: 2px; }
 
         #fh-pos {
-          position: fixed; left: 0; top: 0; width: 336px; z-index: 2147483647;
+          position: fixed; left: 0; top: 0; width: 344px; z-index: 2147483647;
           will-change: transform; pointer-events: none;
           font: 13px/1.45 Inter, "SF Pro Text", "Segoe UI", Roboto, system-ui, sans-serif;
           color: #e8eaf2; -webkit-font-smoothing: antialiased;
@@ -479,17 +540,20 @@
         #fh-panel {
           --tone: #60a5fa; --tone-soft: rgba(96,165,250,.14); --tone-line: rgba(96,165,250,.3);
           position: relative; pointer-events: auto; overflow: hidden;
-          border-radius: 18px; user-select: none;
+          border-radius: 20px; user-select: none;
           background:
-            radial-gradient(120% 80% at 0% 0%, rgba(99,102,241,.22), transparent 55%),
-            radial-gradient(100% 70% at 100% 100%, rgba(34,211,238,.14), transparent 55%),
-            rgba(14,16,28,.88);
-          -webkit-backdrop-filter: blur(22px) saturate(170%); backdrop-filter: blur(22px) saturate(170%);
+            radial-gradient(120% 80% at 0% 0%, rgba(99,102,241,.24), transparent 55%),
+            radial-gradient(100% 70% at 100% 100%, rgba(34,211,238,.15), transparent 55%),
+            rgba(12,14,26,.9);
+          -webkit-backdrop-filter: blur(24px) saturate(180%); backdrop-filter: blur(24px) saturate(180%);
           border: 1px solid rgba(255,255,255,.09);
-          box-shadow: 0 24px 60px -12px rgba(0,0,0,.65), 0 0 0 1px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.07);
+          box-shadow: 0 28px 70px -14px rgba(0,0,0,.7), 0 0 0 1px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.08);
           transform-origin: 0% 100%;
           transition: opacity .28s cubic-bezier(.2,.8,.2,1), transform .34s cubic-bezier(.2,.9,.25,1.1), visibility 0s linear 0s;
         }
+        /* Vạch màu theo trạng thái ở mép trên */
+        #fh-panel::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 2px; z-index: 2;
+          background: linear-gradient(90deg, transparent, var(--tone), transparent); opacity: .85; transition: background .4s; }
         #fh-panel.off { opacity: 0; transform: scale(.92) translateY(14px); visibility: hidden; pointer-events: none;
           transition: opacity .2s ease, transform .24s ease, visibility 0s linear .24s; }
         #fh-panel[data-tone="ok"]   { --tone: #34d399; --tone-soft: rgba(52,211,153,.14);  --tone-line: rgba(52,211,153,.3); }
@@ -498,12 +562,12 @@
         #fh-panel[data-tone="acc"]  { --tone: #a78bfa; --tone-soft: rgba(167,139,250,.15); --tone-line: rgba(167,139,250,.32); }
 
         /* Header */
-        #fh-head { display: flex; align-items: center; gap: 10px; padding: 12px 12px 10px 14px; cursor: grab; touch-action: none; }
+        #fh-head { display: flex; align-items: center; gap: 11px; padding: 14px 12px 11px 14px; cursor: grab; touch-action: none; }
         #fh-head.drag { cursor: grabbing; }
-        .logo { width: 32px; height: 32px; border-radius: 10px; padding: 7px; color: #fff; flex: none;
-          background: linear-gradient(135deg, #6366f1, #22d3ee); box-shadow: 0 6px 16px -4px rgba(99,102,241,.7); }
+        .logo { width: 34px; height: 34px; border-radius: 11px; padding: 8px; color: #fff; flex: none;
+          background: linear-gradient(135deg, #6366f1, #22d3ee); box-shadow: 0 8px 18px -5px rgba(99,102,241,.75), inset 0 1px 0 rgba(255,255,255,.35); }
         .ttl { flex: 1; min-width: 0; }
-        .ttl b { display: block; font-size: 13.5px; font-weight: 650; letter-spacing: .1px; }
+        .ttl b { display: block; font-size: 14px; font-weight: 650; letter-spacing: .1px; }
         .ttl span { display: block; font-size: 11px; color: #8a90a8; }
         .grip { width: 14px; height: 14px; color: #5a6078; flex: none; }
         .ibtn { width: 28px; height: 28px; min-width: 28px; border-radius: 9px; padding: 7px; flex: none;
@@ -533,16 +597,35 @@
         #fh-pause i { width: 12px; height: 12px; display: block; flex: none; }
         #fh-pause span { display: block; white-space: nowrap; }
 
+        /* Giữ sáng màn hình */
+        #fh-awake { display: flex; align-items: center; gap: 11px; padding: 10px 12px; transition: background .3s, border-color .3s; }
+        #fh-awake .ic { width: 30px; height: 30px; padding: 6px; border-radius: 10px; flex: none; color: #94a3b8;
+          background: rgba(255,255,255,.06); transition: color .3s, background .3s, box-shadow .3s; }
+        #fh-awake.on { background: rgba(251,191,36,.07); border-color: rgba(251,191,36,.22); }
+        #fh-awake.on .ic { color: #fbbf24; background: rgba(251,191,36,.16); box-shadow: 0 0 18px -2px rgba(251,191,36,.55); }
+        #fh-awake .tx { flex: 1; min-width: 0; }
+        #fh-awake .t1 { font-weight: 600; font-size: 12.5px; }
+        #fh-awake .t2 { font-size: 11px; color: #7d839b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: color .3s; }
+        #fh-awake.on .t2 { color: #d9b85f; }
+        #fh-sw { position: relative; width: 38px; height: 22px; border-radius: 999px; flex: none;
+          background: rgba(255,255,255,.12); transition: background .25s; }
+        #fh-sw::after { content: ""; position: absolute; left: 3px; top: 3px; width: 16px; height: 16px; border-radius: 50%;
+          background: #fff; box-shadow: 0 2px 5px rgba(0,0,0,.4); transition: transform .25s cubic-bezier(.3,.8,.3,1.2); }
+        #fh-sw[aria-checked="true"] { background: #f59e0b; }
+        #fh-sw[aria-checked="true"]::after { transform: translateX(16px); }
+        #fh-sw:disabled { opacity: .4; cursor: not-allowed; }
+
         /* Session */
-        #fh-sess-card { padding: 12px 14px 13px; }
+        #fh-sess-card { padding: 13px 14px 14px; }
         .row { display: flex; align-items: flex-end; justify-content: space-between; gap: 10px; }
-        .lbl { font-size: 10.5px; letter-spacing: .09em; text-transform: uppercase; color: #7d839b; font-weight: 600; }
-        .big { font: 600 26px/1.1 ui-monospace, "SF Mono", Consolas, monospace; font-variant-numeric: tabular-nums; letter-spacing: -.5px; margin-top: 3px; }
+        .lbl { font-size: 11px; letter-spacing: .02em; color: #8a90a8; font-weight: 600; }
+        .big { font: 600 28px/1.1 ui-monospace, "SF Mono", Consolas, monospace; font-variant-numeric: tabular-nums; letter-spacing: -.5px; margin-top: 3px; }
         .big.idle { color: #5d6379; }
-        .chip { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px 4px 7px; border-radius: 999px; font-weight: 650;
-          font-size: 12px; color: #34d399; background: rgba(52,211,153,.12); font-variant-numeric: tabular-nums; flex: none; }
+        .chip { display: inline-flex; align-items: center; gap: 5px; padding: 5px 11px 5px 8px; border-radius: 999px; font-weight: 650;
+          font-size: 12px; color: #34d399; background: rgba(52,211,153,.12); border: 1px solid rgba(52,211,153,.2);
+          font-variant-numeric: tabular-nums; flex: none; }
         .chip i { width: 13px; height: 13px; display: block; }
-        .bar { margin-top: 11px; height: 6px; border-radius: 999px; background: rgba(255,255,255,.07); overflow: hidden; }
+        .bar { margin-top: 12px; height: 6px; border-radius: 999px; background: rgba(255,255,255,.07); overflow: hidden; }
         .bar > div { height: 100%; width: 0%; border-radius: inherit; position: relative; overflow: hidden;
           background: linear-gradient(90deg, #6366f1, #22d3ee); transition: width .9s cubic-bezier(.3,.7,.2,1); }
         .bar > div::after { content: ""; position: absolute; inset: 0; transform: translateX(-100%);
@@ -557,11 +640,11 @@
         .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
         .tile { padding: 10px 11px; display: flex; gap: 9px; align-items: center; min-width: 0; transition: background .2s, transform .2s; }
         .tile:hover { background: rgba(255,255,255,.07); transform: translateY(-1px); }
-        .tile .ic { width: 28px; height: 28px; padding: 6px; border-radius: 9px; flex: none; color: var(--c);
+        .tile .ic { width: 30px; height: 30px; padding: 7px; border-radius: 10px; flex: none; color: var(--c);
           background: rgba(255,255,255,.06); background: color-mix(in srgb, var(--c) 16%, transparent); }
         .tile .tx { min-width: 0; }
         .tile .v { font: 650 15px/1.15 ui-monospace, "SF Mono", Consolas, monospace; font-variant-numeric: tabular-nums; white-space: nowrap; }
-        .tile .k { font-size: 10.5px; color: #7d839b; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .tile .k { font-size: 11px; color: #7d839b; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
         /* Daily */
         #fh-daily { padding: 12px 14px 12px; }
@@ -590,6 +673,7 @@
         .ln.warn span { color: #fbbf24; }
         .ln.err span { color: #f87171; }
         .ln.rst span { color: #a78bfa; }
+        .ln.awk span { color: #f5c451; }
         .ln.new { animation: lin .35s ease-out; }
         @keyframes lin { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: none; } }
         .empty { color: #596078; padding: 4px 0; }
@@ -625,6 +709,15 @@
               <span class="dot"></span>
               <span id="fh-status"></span>
               <button id="fh-pause" type="button"><i></i><span></span></button>
+            </div>
+
+            <div class="card" id="fh-awake">
+              <div class="ic">${ICON.sun}</div>
+              <div class="tx">
+                <div class="t1">Giữ màn hình sáng</div>
+                <div class="t2" id="fh-awake-s">--</div>
+              </div>
+              <button id="fh-sw" type="button" role="switch" aria-checked="true" aria-label="Giữ màn hình sáng"></button>
             </div>
 
             <div class="card" id="fh-sess-card">
@@ -682,9 +775,11 @@
     const pauseIcon = pauseBtn.querySelector('i');
     const pauseTxt = pauseBtn.querySelector('span');
     const head = $('#fh-head');
+    const awakeCard = $('#fh-awake');
+    const sw = $('#fh-sw');
 
     const clampPos = () => {
-      const w = pos.offsetWidth || 336, h = panel.offsetHeight || 200;
+      const w = pos.offsetWidth || 344, h = panel.offsetHeight || 200;
       ui.x = Math.min(Math.max(8, ui.x), Math.max(8, innerWidth - w - 8));
       ui.y = Math.min(Math.max(8, ui.y), Math.max(8, innerHeight - Math.min(h, innerHeight - 16) - 8));
     };
@@ -708,6 +803,15 @@
       ui.paused = !ui.paused; saveUI();
       if (!ui.paused) LS.set('fh_restarts', []);
       log(ui.paused ? 'Tạm dừng tự động' : 'Tiếp tục tự động');
+      syncWake();
+    };
+
+    if (!wakeSupported) sw.disabled = true;
+    sw.onclick = () => {
+      if (!wakeSupported) return;
+      ui.keepAwake = !ui.keepAwake; saveUI();
+      wakeFailAt = 0;
+      syncWake();
     };
 
     // Kéo thả (transform, mượt, không gây reflow)
@@ -753,6 +857,7 @@
     };
     const lineClass = m => {
       if (/^Daily reset/.test(m)) return 'rst';
+      if (/giữ sáng màn hình/.test(m)) return 'awk';
       if (/^(Dừng|Cảnh báo)/.test(m)) return /^Dừng/.test(m) ? 'err' : 'warn';
       if (/^\+\d+ coin|^Phiên #|^Phiên bắt đầu|Cloudflare OK/.test(m)) return 'ok';
       return '';
@@ -771,6 +876,17 @@
         pauseTxt.textContent = ui.paused ? 'Chạy' : 'Dừng';
       }
       setText($('#fh-status'), ui.paused && status !== 'Đã dừng vì lặp' ? 'Tạm dừng' : status);
+
+      // Giữ sáng màn hình
+      const awakeOn = !!wakeLock;
+      awakeCard.classList.toggle('on', awakeOn);
+      sw.setAttribute('aria-checked', ui.keepAwake ? 'true' : 'false');
+      let awakeTxt;
+      if (!wakeSupported) awakeTxt = 'Trình duyệt không hỗ trợ';
+      else if (awakeOn) awakeTxt = 'Đang giữ sáng, tắt khi hết daily';
+      else if (wantAwake()) awakeTxt = document.visibilityState === 'visible' ? 'Đang xin quyền giữ sáng...' : 'Chờ tab hiện lại';
+      else awakeTxt = wakeWhy === 'Đã hết daily' ? 'Đã nhả vì hết daily' : (wakeWhy || 'Đã tắt');
+      setText($('#fh-awake-s'), awakeTxt);
 
       // Phiên hiện tại
       const el = running ? now() - (+ss.get('fh_started_at') || now()) : 0;
@@ -834,7 +950,7 @@
 
   // ---------- Khởi động ----------
   const render = buildUI();
-  log('Script v4.1 chạy trên ' + location.pathname);
+  log('Script v4.2 chạy trên ' + location.pathname);
   try {
     const lc = JSON.parse(ss.get('fh_last_click') || 'null');
     if (lc && now() - lc.at < 4000) log(`Cảnh báo: vừa bấm "${lc.t}" trước khi đổi trang, có thể là nút gây chuyển trang`);
@@ -843,10 +959,11 @@
   adLoop();
 
   let lastTick = now();
-  setInterval(() => {                       // đọc trang + Daily Reset + UI + cộng dồn thời gian AFK mỗi giây
+  setInterval(() => {                       // đọc trang + Daily Reset + Wake Lock + UI + cộng dồn thời gian AFK mỗi giây
     const t = now(), dt = Math.min(t - lastTick, 5000);
     lastTick = t;
     try { info = readPage(); checkDailyReset(); } catch (e) {}
+    syncWake();
     if (!ui.paused && route() === 'earn' && ss.get('fh_phase') === 'running') {
       stats.totalAfkMs += dt;
       saveStats();
