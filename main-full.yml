@@ -1,0 +1,330 @@
+name: RDP/VPS - Ultra Performance & Beautiful UI - By minhhau_dev 🧑🏿‍💻(5h 45m)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  secure-rdp:
+    runs-on: windows-latest
+    timeout-minutes: 355
+
+    steps:
+      # ============================================================
+      # BƯỚC 1: CẤU HÌNH RDP - CHỈ GIỮ CÁI THẬT SỰ CÓ TÁC DỤNG
+      # ============================================================
+      - name: ⚙️ Cấu Hình RDP (Frame rate + Color + UDP transport)
+        run: |
+          Write-Host "=========================================="
+          Write-Host "  CẤU HÌNH RDP HIỆU SUẤT CAO"
+          Write-Host "=========================================="
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' `
+            -Name "fDenyTSConnections" -Value 0 -Force
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' `
+            -Name "UserAuthentication" -Value 0 -Force
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' `
+            -Name "SecurityLayer" -Value 0 -Force
+          $rdpTcpPath = 'HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp'
+          $rdpPerf = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services'
+          if (-not (Test-Path $rdpPerf)) { New-Item -Path $rdpPerf -Force | Out-Null }
+          Set-ItemProperty -Path $rdpPerf -Name "DWMFRAMEINTERVAL" -Value 15 -Type DWord -Force
+          Set-ItemProperty -Path $rdpPerf -Name "MaxFrameRate" -Value 60 -Type DWord -Force
+          Set-ItemProperty -Path $rdpPerf -Name "VisualExperiencePolicy" -Value 1 -Type DWord -Force
+          Set-ItemProperty -Path $rdpPerf -Name "ImageQuality" -Value 2 -Type DWord -Force
+          Set-ItemProperty -Path $rdpTcpPath -Name "ColorDepth" -Value 3 -Type DWord -Force
+          Set-ItemProperty -Path $rdpPerf -Name "ColorDepth" -Value 3 -Type DWord -Force
+          netsh advfirewall firewall delete rule name="RDP-Tailscale" 2>$null
+          netsh advfirewall firewall add rule name="RDP-Tailscale-TCP" `
+            dir=in action=allow protocol=TCP localport=3389
+          netsh advfirewall firewall add rule name="RDP-Tailscale-UDP" `
+            dir=in action=allow protocol=UDP localport=3389
+          Restart-Service -Name TermService -Force
+          Write-Host "✅ RDP: 60fps | 16-bit color (nhẹ băng thông mobile) | UDP enabled"
+      # ============================================================
+      # BƯỚC 1B: ENABLE USB / PLUG AND PLAY REDIRECT QUA RDP
+      # ============================================================
+      - name: 🔌 Enable USB & PnP Redirect (USB, ổ đĩa, clipboard...)
+        run: |
+          Write-Host "=========================================="
+          Write-Host "  ENABLE USB / PnP REDIRECT QUA RDP"
+          Write-Host "=========================================="
+          $tsPolicy = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services'
+          if (-not (Test-Path $tsPolicy)) { New-Item -Path $tsPolicy -Force | Out-Null }
+          # Cho phép redirect thiết bị Plug and Play (USB, điện thoại, camera...)
+          Set-ItemProperty -Path $tsPolicy -Name "fDisablePNPRedir" -Value 0 -Type DWord -Force
+          # Cho phép redirect ổ đĩa (Drives)
+          Set-ItemProperty -Path $tsPolicy -Name "fDisableCdm" -Value 0 -Type DWord -Force
+          # Cho phép redirect cổng COM
+          Set-ItemProperty -Path $tsPolicy -Name "fDisableCcm" -Value 0 -Type DWord -Force
+          # Cho phép redirect cổng LPT
+          Set-ItemProperty -Path $tsPolicy -Name "fDisableLPT" -Value 0 -Type DWord -Force
+          # Cho phép redirect Clipboard
+          Set-ItemProperty -Path $tsPolicy -Name "fDisableClip" -Value 0 -Type DWord -Force
+          # Áp dụng policy ngay
+          gpupdate /force | Out-Null
+          # Restart TermService để áp dụng
+          Restart-Service -Name TermService -Force
+          # Xác nhận các giá trị đã set đúng
+          Write-Host "`n🔍 Kiểm tra giá trị đã set:"
+          $checks = @("fDisablePNPRedir","fDisableCdm","fDisableCcm","fDisableLPT","fDisableClip")
+          foreach ($key in $checks) {
+              $val = (Get-ItemProperty -Path $tsPolicy -Name $key -ErrorAction SilentlyContinue).$key
+              if ($val -eq 0) {
+                  Write-Host "  ✅ $key = 0x0 (enabled)"
+              } else {
+                  Write-Warning "  ⚠️ $key = $val (unexpected)"
+              }
+          }
+          Write-Host "`n✅ USB/PnP redirect đã được bật!"
+          Write-Host "   → Sau khi kết nối RDP: mstsc → Local Resources → More... → tick thiết bị"
+      # ============================================================
+      # BƯỚC 2: TẠO USER
+      # ============================================================
+      - name: 🔐 Tạo User RDP (minhhau_dev)
+        id: create_user
+        run: |
+          $username = "minhhau_dev"
+          $password = "Hoangminhhau12345@"
+          $securePass = ConvertTo-SecureString $password -AsPlainText -Force
+          New-LocalUser -Name $username -Password $securePass -AccountNeverExpires -PasswordNeverExpires
+          Add-LocalGroupMember -Group "Administrators" -Member $username
+          Add-LocalGroupMember -Group "Remote Desktop Users" -Member $username
+          echo "RDP_USERNAME=$username" >> $env:GITHUB_ENV
+          echo "RDP_PASSWORD=$password" >> $env:GITHUB_ENV
+          echo "RDP_USER_CREATED=true" >> $env:GITHUB_ENV
+          if (Get-LocalUser -Name $username) {
+              Write-Host "✅ User '$username' đã được tạo thành công!"
+          } else {
+              Write-Error "❌ Tạo user thất bại!"
+              exit 1
+          }
+      # ============================================================
+      # BƯỚC 3: CÀI TAILSCALE
+      # ============================================================
+      - name: 🌐 Cài Đặt & Kết Nối Tailscale
+        id: tailscale_connect
+        run: |
+          $tsUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-1.82.0-amd64.msi"
+          $installerPath = "$env:TEMP\tailscale.msi"
+          Invoke-WebRequest -Uri $tsUrl -OutFile $installerPath
+          Start-Process msiexec.exe -ArgumentList "/i", "`"$installerPath`"", "/quiet", "/norestart" -Wait
+          Remove-Item $installerPath -Force
+          & "$env:ProgramFiles\Tailscale\tailscale.exe" up `
+            --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} `
+            --hostname=gh-rdp-$env:GITHUB_RUN_ID `
+            --timeout=60s
+          $tsIP = $null
+          $retries = 0
+          while (-not $tsIP -and $retries -lt 15) {
+              Start-Sleep -Seconds 3
+              $tsIP = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4
+              $retries++
+          }
+          if (-not $tsIP) {
+              Write-Error "❌ Tailscale không lấy được IP!"
+              exit 1
+          }
+          echo "TAILSCALE_IP=$tsIP" >> $env:GITHUB_ENV
+          echo "TAILSCALE_CONNECTED=true" >> $env:GITHUB_ENV
+          Write-Host "✅ Tailscale IP: $tsIP"
+      # ============================================================
+      # BƯỚC 4: JAVA 21 + MAVEN
+      # ============================================================
+      - name: ☕ Cài Java 21 (Microsoft Build) & Maven
+        run: |
+          $javaUrl = "https://aka.ms/download-jdk/microsoft-jdk-21.0.6-windows-x64.msi"
+          $javaMsi = "$env:TEMP\java21.msi"
+          Invoke-WebRequest -Uri $javaUrl -OutFile $javaMsi
+          Start-Process msiexec.exe -ArgumentList "/i", "`"$javaMsi`"", "/quiet", "/norestart" -Wait
+          Remove-Item $javaMsi -Force
+          $javaFolder = Get-ChildItem "C:\Program Files\Microsoft\jdk-21*" | Select-Object -First 1
+          if ($javaFolder) {
+              $javaPath = $javaFolder.FullName
+              [Environment]::SetEnvironmentVariable("JAVA_HOME", $javaPath, "Machine")
+              $oldPath = [Environment]::GetEnvironmentVariable("Path", "Machine")
+              [Environment]::SetEnvironmentVariable("Path", "$oldPath;$javaPath\bin", "Machine")
+              Write-Host "✅ Java 21: $javaPath"
+          } else {
+              Write-Error "❌ Không tìm thấy Java!"
+          }
+          choco install maven -y --no-progress
+      # ============================================================
+      # BƯỚC 5: TẢI CÔNG CỤ DEV
+      # ============================================================
+      - name: 📦 Tải VS Code & Antigravity → Desktop
+        run: |
+          $publicDesktop = "C:\Users\Public\Desktop"
+          $vscodeUrl = "https://update.code.visualstudio.com/latest/win32-x64-archive/stable"
+          $vscodeZip = "$env:TEMP\vscode.zip"
+          $vscodeDest = "C:\VSCode"
+          Invoke-WebRequest -Uri $vscodeUrl -OutFile $vscodeZip
+          Expand-Archive -Path $vscodeZip -DestinationPath $vscodeDest -Force
+          Remove-Item $vscodeZip -Force
+          $s1 = (New-Object -ComObject WScript.Shell).CreateShortcut("$publicDesktop\VS Code.lnk")
+          $s1.TargetPath = "$vscodeDest\Code.exe"
+          $s1.WorkingDirectory = $vscodeDest
+          $s1.Save()
+          $agUrl = "https://edgedl.me.gvt1.com/edgedl/release2/j0qc3/antigravity/stable/1.13.3-4533425205018624/windows-x64/Antigravity.exe"
+          Invoke-WebRequest -Uri $agUrl -OutFile "$publicDesktop\Setup_Antigravity.exe"
+          Write-Host "✅ VS Code + Antigravity sẵn sàng!"
+      # ============================================================
+      # BƯỚC 6: MEGA OPTIMIZER
+      # ============================================================
+      - name: ⚡ MEGA OPTIMIZER - Tối Ưu Toàn Diện
+        run: |
+          Write-Host "=========================================="
+          Write-Host "  ⚡ MEGA SYSTEM OPTIMIZER"
+          Write-Host "=========================================="
+          # [1] Power Plan High Performance
+          Write-Host "`n🔋 [1/7] High Performance..."
+          powercfg /setactive 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c
+          powercfg /change standby-timeout-ac 0
+          powercfg /change hibernate-timeout-ac 0
+          powercfg /change monitor-timeout-ac 0
+          powercfg /hibernate off
+          # [2] Tắt dịch vụ rác
+          Write-Host "`n🔧 [2/7] Tắt dịch vụ..."
+          $servicesToDisable = @(
+              'DiagTrack','dmwappushservice','diagnosticshub.standardcollector.service','DcpSvc',
+              'wuauserv','WaaSMedicSvc','UsoSvc','InstallService',
+              'Sense','SecurityHealthService','wscsvc','WdNisSvc','WinDefend',
+              'WlanSvc','WwanSvc','NcbService','lmhosts','SharedAccess','RemoteRegistry','RemoteAccess',
+              'Spooler','PrintNotify','Fax',
+              'WiaRpc','SensrSvc','SensorService','SensorDataService','TabletInputService',
+              'bthserv','BTAGService','irmon','icssvc',
+              'WpnService','WpnUserService','DusmSvc','MapsBroker','lfsvc','WSearch',
+              'PimIndexMaintenanceSvc','RetailDemo','wisvc',
+              'XblAuthManager','XblGameSave','XboxNetApiSvc','XboxGipSvc',
+              'WerSvc','wercplsupport','Wecsvc','TrkWks','SysMain','FontCache',
+              'PhoneSvc','SEMgrSvc','CDPSvc','CDPUserSvc'
+          )
+          $stopped = 0
+          foreach ($svc in $servicesToDisable) {
+              try {
+                  $s = Get-Service -Name $svc -ErrorAction SilentlyContinue
+                  if ($s) {
+                      Stop-Service -Name $svc -Force -ErrorAction SilentlyContinue
+                      Set-Service -Name $svc -StartupType Disabled -ErrorAction SilentlyContinue
+                      $stopped++
+                  }
+              } catch {}
+          }
+          Write-Host "  ✅ Đã tắt $stopped dịch vụ"
+          # [3] Kill process nền
+          Write-Host "`n💀 [3/7] Kill tiến trình nền..."
+          $processesToKill = @(
+              'SearchUI','SearchApp','SearchIndexer','SearchProtocolHost',
+              'ShellExperienceHost','StartMenuExperienceHost',
+              'ApplicationFrameHost','RuntimeBroker',
+              'SettingSyncHost','BackgroundTransferHost','RemindersServer','CloudExperienceHost',
+              'OneDrive','MicrosoftEdgeUpdate','Microsoft.Photos','SkypeApp','YourPhone',
+              'GameBar','GameBarPresenceWriter','ctfmon'
+          )
+          $killed = 0
+          foreach ($proc in $processesToKill) {
+              try {
+                  $p = Get-Process -Name $proc -ErrorAction SilentlyContinue
+                  if ($p) { Stop-Process -Name $proc -Force -ErrorAction SilentlyContinue; $killed++ }
+              } catch {}
+          }
+          Write-Host "  ✅ Đã kill $killed tiến trình"
+          # [4] Visual effects
+          Write-Host "`n🎨 [4/7] Visual Effects..."
+          $desktopKey = 'HKCU:\Control Panel\Desktop'
+          $advKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced'
+          Set-ItemProperty -Path $desktopKey -Name "UserPreferencesMask" `
+            -Value ([byte[]](0x90,0x12,0x07,0x80,0x10,0x00,0x00,0x00)) -Force
+          Set-ItemProperty -Path $desktopKey -Name "FontSmoothing" -Value "2" -Force
+          Set-ItemProperty -Path $desktopKey -Name "FontSmoothingType" -Value 2 -Type DWord -Force
+          Set-ItemProperty -Path $advKey -Name "TaskbarAnimations" -Value 0 -Force
+          Set-ItemProperty -Path $advKey -Name "ListviewShadow" -Value 0 -Force
+          Set-ItemProperty -Path $advKey -Name "DisablePreviewDesktop" -Value 1 -Force
+          Set-ItemProperty -Path $desktopKey -Name "MenuShowDelay" -Value "0" -Force
+          # [5] Wallpaper
+          Write-Host "`n🖥️ [5/7] Desktop..."
+          Add-Type -AssemblyName System.Drawing
+          $bmp = New-Object System.Drawing.Bitmap(1920, 1080)
+          $g = [System.Drawing.Graphics]::FromImage($bmp)
+          $brush = New-Object System.Drawing.Drawing2D.LinearGradientBrush(
+              (New-Object System.Drawing.Point(0, 0)), (New-Object System.Drawing.Point(1920, 1080)),
+              [System.Drawing.Color]::FromArgb(15, 15, 40), [System.Drawing.Color]::FromArgb(30, 15, 50))
+          $g.FillRectangle($brush, 0, 0, 1920, 1080)
+          $wallpaperPath = "C:\wallpaper.bmp"
+          $bmp.Save($wallpaperPath, [System.Drawing.Imaging.ImageFormat]::Bmp)
+          $g.Dispose(); $bmp.Dispose()
+          $wpCode = 'using System.Runtime.InteropServices; public class Wallpaper { [DllImport("user32.dll", CharSet = CharSet.Auto)] public static extern int SystemParametersInfo(int uAction, int uParam, string lpvParam, int fuWinIni); }'
+          Add-Type -TypeDefinition $wpCode
+          Set-ItemProperty -Path 'HKCU:\Control Panel\Desktop' -Name "WallpaperStyle" -Value "10" -Force
+          Set-ItemProperty -Path 'HKCU:\Control Panel\Desktop' -Name "TileWallpaper" -Value "0" -Force
+          [Wallpaper]::SystemParametersInfo(0x0014, 0, $wallpaperPath, 0x0003) | Out-Null
+          Set-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize' -Name "AppsUseLightTheme" -Value 0 -Force
+          Set-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize' -Name "SystemUsesLightTheme" -Value 0 -Force
+          # [6] RAM + PageFile
+          Write-Host "`n🧠 [6/7] RAM & PageFile..."
+          powershell.exe -Command "
+              try {
+                  `$cs = Get-WmiObject -Class Win32_ComputerSystem -EnableAllPrivileges
+                  `$cs.AutomaticManagedPagefile = `$false
+                  `$cs.Put() | Out-Null
+                  `$oldPF = Get-WmiObject -Class Win32_PageFileSetting
+                  if (`$oldPF) { `$oldPF.Delete() }
+                  Set-WmiInstance -Class Win32_PageFileSetting -Arguments @{
+                      Name = 'C:\pagefile.sys'; InitialSize = 4096; MaximumSize = 8192
+                  } | Out-Null
+                  Write-Host '  ✅ PageFile: 4GB-8GB'
+              } catch {
+                  Write-Host '  ⚠️ PageFile skip (không ảnh hưởng lớn)'
+              }
+          "
+          $mmKey = 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management'
+          Set-ItemProperty -Path $mmKey -Name "DisablePagingExecutive" -Value 1 -Type DWord -Force
+          [System.GC]::Collect()
+          # [7] Disk + Network
+          Write-Host "`n💾 [7/7] Disk & Network..."
+          Remove-Item "$env:TEMP\*" -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item "C:\Windows\Temp\*" -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item "C:\Windows\SoftwareDistribution\Download\*" -Recurse -Force -ErrorAction SilentlyContinue
+          fsutil behavior set disablelastaccess 1 | Out-Null
+          netsh int tcp set global autotuninglevel=normal | Out-Null
+          netsh int tcp set global rss=enabled | Out-Null
+          netsh int tcp set supplemental Internet congestionprovider=ctcp | Out-Null
+          Write-Host "`n=========================================="
+          Write-Host "  ⚡ TỐI ƯU HOÀN TẤT"
+          Write-Host "  🔧 Services tắt: $stopped | 💀 Processes killed: $killed"
+          Write-Host "  🎮 RDP: 60fps | 16-bit color | UDP | USB/PnP redirect enabled"
+          Write-Host "=========================================="
+      # ============================================================
+      # BƯỚC 7: DUY TRÌ KẾT NỐI (5h 45m)
+      # ============================================================
+      - name: ⏳ Duy Trì Kết Nối RDP (5h 45m)
+        run: |
+          $sleepSeconds = 345 * 60
+          Write-Host "📍 Address : $env:TAILSCALE_IP"
+          Write-Host "👤 Username: $env:RDP_USERNAME"
+          Write-Host "🔑 Password: $env:RDP_PASSWORD"
+          Write-Host ""
+          Write-Host "📱 Để dùng USB/Galaxy qua RDP:"
+          Write-Host "   mstsc → Show Options → Local Resources → More... → tick thiết bị → Connect"
+          Start-Sleep -Seconds $sleepSeconds
+          Write-Host "[$(Get-Date)] ⏰ Hết giờ, shutdown..."
+          shutdown /s /t 0
+      # ============================================================
+      # BƯỚC 8: DỌN DẸP AN TOÀN (Always Run)
+      # ============================================================
+      - name: 🧹 Dọn Dẹp An Toàn (Always Run)
+        if: always() && (env.RDP_USER_CREATED == 'true' || env.TAILSCALE_CONNECTED == 'true')
+        run: |
+          if ("${{ env.TAILSCALE_CONNECTED }}" -eq "true") {
+              & "$env:ProgramFiles\Tailscale\tailscale.exe" down --timeout 10s 2>$null
+              & "$env:ProgramFiles\Tailscale\tailscale.exe" logout 2>$null
+          }
+          if ("${{ env.RDP_USER_CREATED }}" -eq "true") {
+              $u = "${{ env.RDP_USERNAME }}"
+              query user 2>$null | Where-Object { $_ -match $u } | ForEach-Object {
+                  $sessionId = ($_ -split '\s+')[2]
+                  logoff $sessionId /server:localhost 2>$null
+              }
+              Start-Sleep -Seconds 2
+              Remove-LocalUser -Name $u -Force -ErrorAction SilentlyContinue
+          }
+          Remove-Item "C:\wallpaper.bmp" -Force -ErrorAction SilentlyContinue
+          Write-Host "✅ Dọn dẹp hoàn tất."
