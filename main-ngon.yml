@@ -1,0 +1,187 @@
+name: RDP/VPS - Ultra Low Process - By minhhau_dev 🧑🏿‍💻(5h 45m)
+
+on:
+  # Kích hoạt thủ công qua nút 'Run workflow' trên GitHub
+  workflow_dispatch:
+
+jobs:
+  secure-rdp:
+    runs-on: windows-2019
+    # Đặt Timeout ở 5 giờ 55 phút (355 phút)
+    timeout-minutes: 355 
+
+    steps:
+      - name: ⚙️ Cấu Hình Cổng RDP (Bắt buộc)
+        run: |
+          Write-Host "Cấu hình RDP và Firewall..."
+          # Bật Remote Desktop và cấu hình an toàn
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' `
+                             -Name "fDenyTSConnections" -Value 0 -Force
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' `
+                             -Name "UserAuthentication" -Value 0 -Force
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' `
+                             -Name "SecurityLayer" -Value 0 -Force
+          # Mở cổng 3389 qua Firewall
+          netsh advfirewall firewall delete rule name="RDP-Tailscale"
+          netsh advfirewall firewall add rule name="RDP-Tailscale" `
+            dir=in action=allow protocol=TCP localport=3389
+          Restart-Service -Name TermService -Force
+          Write-Host "✅ Hoàn tất cấu hình RDP."
+      - name: 🔐 Tạo User Cố Định (RDPuser)
+        id: create_user
+        run: |
+          # Username và Password CỐ ĐỊNH theo yêu cầu của mày
+          $username = "minhhau_dev"
+          $password = "Hoangminhhau12345@" # Đã sửa, Mày có thể đổi lại pass khác
+          $securePass = ConvertTo-SecureString $password -AsPlainText -Force
+          # Tạo User và cấp quyền
+          New-LocalUser -Name $username -Password $securePass -AccountNeverExpires
+          Add-LocalGroupMember -Group "Administrators" -Member $username
+          Add-LocalGroupMember -Group "Remote Desktop Users" -Member $username
+          
+          # Lưu thông tin vào môi trường
+          echo "RDP_USERNAME=$username" >> $env:GITHUB_ENV
+          echo "RDP_PASSWORD=$password" >> $env:GITHUB_ENV
+          echo "RDP_USER_CREATED=true" >> $env:GITHUB_ENV
+          if (-not (Get-LocalUser -Name $username)) {
+              Write-Error "User creation failed"
+              exit 1
+          }
+          
+          
+      - name: installing Tailscale
+        run: |
+          Write-Host "Cài đặt Tailscale..."
+          # Cài đặt Tailscale (Code không đổi)
+          $tsUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-1.82.0-amd64.msi"
+          $installerPath = "$env:TEMP\tailscale.msi"
+          
+          Invoke-WebRequest -Uri $tsUrl -OutFile $installerPath
+          Start-Process msiexec.exe -ArgumentList "/i", "`"$installerPath`"", "/quiet", "/norestart" -Wait
+          Remove-Item $installerPath -Force
+          Write-Host "✅ Cài đặt Tailscale hoàn tất."
+      - name: 🔗 Kết Nối Tailscale (Authentication)
+        id: tailscale_connect
+        run: |
+          Write-Host "Kết nối Tailscale và chờ IP..."
+          # Kết nối và đăng ký node
+          & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gh-runner-$env:GITHUB_RUN_ID --timeout=60s
+          
+          $tsIP = $null
+          $retries = 0
+          while (-not $tsIP -and $retries -lt 10) {
+              $tsIP = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4
+              Start-Sleep -Seconds 5
+              $retries++
+          }
+          
+          if (-not $tsIP) {
+              Write-Error "Tailscale IP not assigned or connection timed out. Exiting."
+              exit 1
+          }
+          echo "TAILSCALE_IP=$tsIP" >> $env:GITHUB_ENV
+          echo "TAILSCALE_CONNECTED=true" >> $env:GITHUB_ENV
+          Write-Host "✅ Tailscale đã kết nối. IP: $tsIP"
+      
+
+      - name: 🚀 SUPER OPTIMIZER - HỦY DIỆT TIẾN TRÌNH RÁC (ULTRA LOW)
+
+        run: |
+          Write-Host "Bắt đầu tối ưu hệ thống: TẮT DỊCH VỤ và TIÊU DIỆT TIẾN TRÌNH NỀN..."
+          
+          # === PHẦN 1: TẮT DỊCH VỤ WINDOWS NỀN (Mở rộng từ Reddit) ===
+          $servicesToStop = @(
+              'diagtrack',         # Telemetry
+              'DusmSvc',           # Data Usage
+              'dmwappushservice',  # Push to sync
+              'wuauserv',          # Windows Update
+              'Sense',             # Defender Network Inspection
+              'SecurityHealthService', # Windows Security Center
+              'PimIndexMaintenanceSvc', # Contact Data
+              'WpnService',        # Push Notifications
+              'spooler',           # Print Spooler (Từ Reddit)
+              'WiaRpc',            # Windows Image Acquisition (Từ Reddit)
+              'Fax',               # Fax Services (Từ Reddit)
+              'WSearch',           # Windows Search (Từ Reddit)
+              'ersvc',             # Windows Error Reporting (Từ Reddit)
+              'RemoteRegistry',    # Remote Registry (Từ Reddit)
+              'TabletInputService' # Touch Keyboard (Từ Reddit)
+          )
+          
+          foreach ($service in $servicesToStop) {
+              try {
+                  Stop-Service -Name $service -Force -ErrorAction SilentlyContinue
+                  Set-Service -Name $service -StartupType Disabled -ErrorAction SilentlyContinue
+                  Write-Host "  ✅ Đã TẮT dịch vụ: $service"
+              } catch {}
+          }
+          # === PHẦN 2: TIÊU DIỆT CÁC TIẾN TRÌNH RÁC NỀN (AGGRESSIVE KILL) ===
+          Write-Host "Bắt đầu tiêu diệt các tiến trình nền của GitHub/VSCode/Edge/Windows Shell..."
+          $processesToKill = @(
+              'Code.exe',          # VSCode Agent/Related Processes
+              'MicrosoftEdge.exe', # Edge/WebViewer
+              'ApplicationFrameHost.exe',
+              'SearchUI.exe',
+              'RuntimeBroker.exe', 
+              'SettingSyncHost.exe',
+              'RemindersServer.exe',
+              'CloudExperienceHost.exe',
+              'ShellExperienceHost.exe',
+              'GitHub.Runner.Listener.exe', # Tắt listener cũ
+              'SearchIndexer.exe',        # Indexing Service
+              'ctfmon.exe',               # Language Bar/Input
+              'Microsoft.Photos.exe',     # Windows Bloat/Apps
+              'OneDrive.exe'              # OneDrive Agent
+          )
+          
+          foreach ($process in $processesToKill) {
+              try {
+                  Stop-Process -Name $process -Force -ErrorAction SilentlyContinue
+                  Write-Host "  ❌ Đã KILL tiến trình: $process"
+              } catch {}
+          }
+          
+          # === PHẦN 3: TỐI ƯU HIỆU SUẤT HÌNH ẢNH RDP ===
+          Set-ItemProperty -Path 'HKCU:\Control Panel\Desktop' -Name "UserPreferencesMask" -Value ([byte[]](0x9E,0x1E,0x07,0x80,0x12,0x00,0x00,0x00)) -Force # Adjust for best performance
+          Set-ItemProperty -Path 'HKCU:\Control Panel\Desktop' -Name "FontSmoothing" -Value "0" -Force # Tắt ClearType
+          Set-ItemProperty -Path 'HKCU:\Control Panel\Desktop' -Name "Wallpaper" -Value "" -Force # Tắt Wallpaper
+          
+          Write-Host "✅ Tối ưu hệ thống (Ultra Low) hoàn tất! Giờ thì máy chạy nhẹ như lông hồng!"
+      - name: ⏳ Duy Trì Kết Nối (5h 45m)
+        run: |
+          $sleepSeconds = 345 * 60 # 5 giờ 45 phút = 20700 giây
+          
+          Write-Host "`n=== RDP ACCESS - Sẵn Sàng ==="
+          Write-Host "Address: $env:TAILSCALE_IP"
+          Write-Host "Username: $env:RDP_USERNAME"
+          Write-Host "Password: $env:RDP_PASSWORD"
+          Write-Host "    $cfLink"
+          Write-Host "==========================`n"
+          
+          Write-Host "[$(Get-Date)] RDP sẽ TỰ ĐỘNG TẮT (shutdown) sau 5 giờ 45 phút."
+          
+          # Giữ kết nối (sleep)
+          Start-Sleep -Seconds $sleepSeconds
+          # 💥 Tắt máy ngay lập tức để kết thúc Runner an toàn
+          Write-Host "[$(Get-Date)] Đang tiến hành TẮT MÁY (SHUTDOWN) ngay lập tức..."
+          shutdown /s /t 0
+          
+      # --- BƯỚC DỌN DẸP BẮT BUỘC KHI BỊ HỦY/TIMEOUT ---
+      - name: 🧹 Dọn Dẹp Bắt Buộc Khi Hủy/Timeout/Thất Bại
+        if: always() && (env.RDP_USER_CREATED == 'true' || env.TAILSCALE_CONNECTED == 'true')
+        run: |
+          Write-Host "=== Bắt đầu dọn dẹp runner an toàn (Ngay cả khi bị Hủy/Thất bại) ==="
+          
+          # 1. Ngắt kết nối Tailscale
+          if ("${{ env.TAILSCALE_CONNECTED }}" -eq "true") {
+              Write-Host "Ngắt kết nối Tailscale..."
+              & "$env:ProgramFiles\Tailscale\tailscale.exe" down -timeout 10s
+          }
+          # 2. Xóa tài khoản RDP đã tạo
+          if ("${{ env.RDP_USER_CREATED }}" -eq "true") {
+              Write-Host "Xóa tài khoản RDP..."
+              Remove-LocalUser -Name "RDPuser" -Force -ErrorAction SilentlyContinue
+          }
+          
+          Write-Host "=== Dọn dẹp hoàn tất. Tài khoản GitHub của mày đã an toàn. ==="
+          # vào https://github.com/mhau180/Rdp/settings/secrets/actions hay là settings repo và tạo một cái mới tên là TAILSCALE_AUTH_KEY k8d82rxWED11CNTRL (Tạo Ngày 31 tháng 10 năm 2025 Hết hạn Ngày 29 tháng 1 năm 2026)
