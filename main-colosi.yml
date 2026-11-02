@@ -1,0 +1,79 @@
+name: RDP/VPS - Ultra Performance - By minhhau_dev 🧑🏿‍💻(5h 45m)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  secure-rdp:
+    runs-on: windows-latest
+    timeout-minutes: 355
+
+    steps:
+      # 1. Cấu hình RDP tối thiểu & Bật Firewall
+      - name: ⚙️ Cấu Hình RDP & Firewall
+        run: |
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0 -Force
+          
+          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+          Restart-Service -Name TermService -Force
+
+      # 2. Tạo User
+      - name: 🔐 Tạo User RDP
+        run: |
+          $username = "minhhau_dev"
+          $password = "Hoangminhhau12345@"
+          $securePass = ConvertTo-SecureString $password -AsPlainText -Force
+
+          New-LocalUser -Name $username -Password $securePass -AccountNeverExpires -PasswordNeverExpires
+          Add-LocalGroupMember -Group "Administrators" -Member $username
+          Add-LocalGroupMember -Group "Remote Desktop Users" -Member $username
+
+          "RDP_USERNAME=$username" >> $env:GITHUB_ENV
+          "RDP_PASSWORD=$password" >> $env:GITHUB_ENV
+          "RDP_USER_CREATED=true" >> $env:GITHUB_ENV
+
+      # 3. Kết nối Tailscale
+      - name: 🌐 Cài Đặt & Kết Nối Tailscale
+        run: |
+          choco install tailscale -y --no-progress
+          & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gh-rdp-$env:GITHUB_RUN_ID --timeout=60s
+          
+          $tsIP = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4
+          "TAILSCALE_IP=$tsIP" >> $env:GITHUB_ENV
+          "TAILSCALE_CONNECTED=true" >> $env:GITHUB_ENV
+          Write-Host "✅ Tailscale IP: $tsIP"
+
+      # 4. Cài Java 21 & Maven (Dùng Action chuẩn của GitHub Ecosystem)
+      - name: ☕ Setup Java 21 & Maven
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'microsoft'
+          java-version: '21'
+
+      # 5. Tải Công Cụ Dev (VS Code)
+      - name: 📦 Tải VS Code
+        run: |
+          $vscodeZip = "$env:TEMP\vscode.zip"
+          Invoke-WebRequest -Uri "https://update.code.visualstudio.com/latest/win32-x64-archive/stable" -OutFile $vscodeZip
+          Expand-Archive -Path $vscodeZip -DestinationPath "C:\Users\Public\Desktop\VSCode" -Force
+          Remove-Item $vscodeZip -Force
+
+      # 6. Duy Trì Kết Nối RDP (5h 45m)
+      - name: ⏳ Duy Trì Kết Nối RDP (5h 45m)
+        run: |
+          Write-Host "📍 Address : $env:TAILSCALE_IP"
+          Write-Host "👤 Username: $env:RDP_USERNAME"
+          Write-Host "🔑 Password: $env:RDP_PASSWORD"
+          Start-Sleep -Seconds (345 * 60)
+
+      # 7. Dọn Dẹp An Toàn
+      - name: 🧹 Dọn Dẹp An Toàn
+        if: always()
+        run: |
+          if ("$env:TAILSCALE_CONNECTED" -eq "true") {
+              & "$env:ProgramFiles\Tailscale\tailscale.exe" logout
+          }
+          if ("$env:RDP_USER_CREATED" -eq "true") {
+              Remove-LocalUser -Name "$env:RDP_USERNAME" -ErrorAction SilentlyContinue
+          }
