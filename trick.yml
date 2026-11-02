@@ -1,0 +1,148 @@
+name: RDP/VPS - Ultra Performance & Beautiful UI - By minhhau_dev 🧑🏿‍💻(5h 45m)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  secure-rdp:
+    runs-on: windows-latest #windows-latest là win11 server  hoặc windows-2022 nếu muốn dùng win 10 server
+    timeout-minutes: 355
+
+    steps:
+      # ============================================================
+      # BƯỚC 1: CẤU HÌNH RDP - CHỈ GIỮ CÁI THẬT SỰ CÓ TÁC DỤNG
+      # ============================================================
+      
+
+      # ============================================================
+      # BƯỚC 1B: ENABLE USB / PLUG AND PLAY REDIRECT QUA RDP
+      # ============================================================
+     
+
+      # ============================================================
+      # BƯỚC 2: TẠO USER
+      # ============================================================
+      - name: 🔐 Tạo User RDP (minhhau_dev)
+        id: create_user
+        run: |
+          $username = "minhhau_dev"
+          $password = "Hoangminhhau12345@"
+          $securePass = ConvertTo-SecureString $password -AsPlainText -Force
+
+          New-LocalUser -Name $username -Password $securePass -AccountNeverExpires -PasswordNeverExpires
+          Add-LocalGroupMember -Group "Administrators" -Member $username
+          Add-LocalGroupMember -Group "Remote Desktop Users" -Member $username
+
+          echo "RDP_USERNAME=$username" >> $env:GITHUB_ENV
+          echo "RDP_PASSWORD=$password" >> $env:GITHUB_ENV
+          echo "RDP_USER_CREATED=true" >> $env:GITHUB_ENV
+
+          if (Get-LocalUser -Name $username) {
+              Write-Host "✅ User '$username' đã được tạo thành công!"
+          } else {
+              Write-Error "❌ Tạo user thất bại!"
+              exit 1
+          }
+
+      # ============================================================
+      # BƯỚC 3: CÀI TAILSCALE
+      # ============================================================
+      - name: 🌐 Cài Đặt & Kết Nối Tailscale
+        id: tailscale_connect
+        run: |
+          $tsUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-1.82.0-amd64.msi"
+          $installerPath = "$env:TEMP\tailscale.msi"
+
+          Invoke-WebRequest -Uri $tsUrl -OutFile $installerPath
+          Start-Process msiexec.exe -ArgumentList "/i", "`"$installerPath`"", "/quiet", "/norestart" -Wait
+          Remove-Item $installerPath -Force
+
+          & "$env:ProgramFiles\Tailscale\tailscale.exe" up `
+            --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} `
+            --hostname=gh-rdp-$env:GITHUB_RUN_ID `
+            --timeout=60s
+
+          $tsIP = $null
+          $retries = 0
+          while (-not $tsIP -and $retries -lt 15) {
+              Start-Sleep -Seconds 3
+              $tsIP = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4
+              $retries++
+          }
+
+          if (-not $tsIP) {
+              Write-Error "❌ Tailscale không lấy được IP!"
+              exit 1
+          }
+
+          echo "TAILSCALE_IP=$tsIP" >> $env:GITHUB_ENV
+          echo "TAILSCALE_CONNECTED=true" >> $env:GITHUB_ENV
+          Write-Host "✅ Tailscale IP: $tsIP"
+
+      # ============================================================
+      # BƯỚC 4: JAVA 21 + MAVEN
+      # ============================================================
+      - name: ☕ Cài Java 21 (Microsoft Build) & Maven
+        run: |
+          $javaUrl = "https://aka.ms/download-jdk/microsoft-jdk-21.0.6-windows-x64.msi"
+          $javaMsi = "$env:TEMP\java21.msi"
+          Invoke-WebRequest -Uri $javaUrl -OutFile $javaMsi
+          Start-Process msiexec.exe -ArgumentList "/i", "`"$javaMsi`"", "/quiet", "/norestart" -Wait
+          Remove-Item $javaMsi -Force
+
+          $javaFolder = Get-ChildItem "C:\Program Files\Microsoft\jdk-21*" | Select-Object -First 1
+          if ($javaFolder) {
+              $javaPath = $javaFolder.FullName
+              [Environment]::SetEnvironmentVariable("JAVA_HOME", $javaPath, "Machine")
+              $oldPath = [Environment]::GetEnvironmentVariable("Path", "Machine")
+              [Environment]::SetEnvironmentVariable("Path", "$oldPath;$javaPath\bin", "Machine")
+              Write-Host "✅ Java 21: $javaPath"
+          } else {
+              Write-Error "❌ Không tìm thấy Java!"
+          }
+
+          choco install maven -y --no-progress
+
+      # ============================================================
+      # BƯỚC 5: TẢI CÔNG CỤ DEV
+      # ============================================================
+  
+
+      # ============================================================
+      # BƯỚC 7: DUY TRÌ KẾT NỐI (5h 45m)
+      # ============================================================
+      - name: ⏳ Duy Trì Kết Nối RDP (5h 45m)
+        run: |
+          $sleepSeconds = 345 * 60
+          Write-Host "📍 Address : $env:TAILSCALE_IP"
+          Write-Host "👤 Username: $env:RDP_USERNAME"
+          Write-Host "🔑 Password: $env:RDP_PASSWORD"
+          Write-Host ""
+          Write-Host "📱 Để dùng USB/Galaxy qua RDP:"
+          Write-Host "   mstsc → Show Options → Local Resources → More... → tick thiết bị → Connect"
+          Start-Sleep -Seconds $sleepSeconds
+          Write-Host "[$(Get-Date)] ⏰ Hết giờ, shutdown..."
+          shutdown /s /t 0
+
+      # ============================================================
+      # BƯỚC 8: DỌN DẸP AN TOÀN (Always Run)
+      # ============================================================
+      - name: 🧹 Dọn Dẹp An Toàn (Always Run)
+        if: always() && (env.RDP_USER_CREATED == 'true' || env.TAILSCALE_CONNECTED == 'true')
+        run: |
+          if ("${{ env.TAILSCALE_CONNECTED }}" -eq "true") {
+              & "$env:ProgramFiles\Tailscale\tailscale.exe" down --timeout 10s 2>$null
+              & "$env:ProgramFiles\Tailscale\tailscale.exe" logout 2>$null
+          }
+          if ("${{ env.RDP_USER_CREATED }}" -eq "true") {
+              $u = "${{ env.RDP_USERNAME }}"
+              query user 2>$null | Where-Object { $_ -match $u } | ForEach-Object {
+                  $sessionId = ($_ -split '\s+')[2]
+                  logoff $sessionId /server:localhost 2>$null
+              }
+              Start-Sleep -Seconds 2
+              Remove-LocalUser -Name $u -Force -ErrorAction SilentlyContinue
+          }
+          Remove-Item "C:\wallpaper.bmp" -Force -ErrorAction SilentlyContinue
+          Write-Host "✅ Dọn dẹp hoàn tất."
+          
