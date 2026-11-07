@@ -8,7 +8,7 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 355
 
-steps:
+    steps:
       # 1. Cấu hình VM & Firewall
       - name: Cấu Hình VM & Firewall
         run: |
@@ -16,18 +16,18 @@ steps:
           Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
           Restart-Service -Name TermService -Force
 
-# 2. Tạo User (cố định cứng)
+      # 2. Tạo User
       - name: Tạo User VM
         run: |
           $username = "minhhau_dev"
-          $password = "MatKhauCuaBan@2026"
+          $password = "Hoangminhhau12345@"
           $securePass = ConvertTo-SecureString $password -AsPlainText -Force
           New-LocalUser -Name $username -Password $securePass -AccountNeverExpires -PasswordNeverExpires
           Add-LocalGroupMember -Group "Administrators" -Member $username
           Add-LocalGroupMember -Group "Remote Desktop Users" -Member $username
           "VM_USER_CREATED=true" >> $env:GITHUB_ENV
 
-# 3. Kết nối Tailscale
+      # 3. Kết nối Tailscale
       - name: Kết Nối Tailscale
         run: |
           choco install tailscale -y --no-progress
@@ -37,11 +37,11 @@ steps:
           "TAILSCALE_CONNECTED=true" >> $env:GITHUB_ENV
           Write-Host "VM IP: $tsIP"
 
-# 4. Duy trì phiên VM (5h45m)
+      # 4. Duy trì phiên VM (5h45m)
       - name: Duy Trì VM (5h 45m)
         run: Start-Sleep -Seconds (345 * 60)
 
-# 5. Dọn dẹp
+      # 5. Dọn dẹp
       - name: Dọn Dẹp VM
         if: always()
         run: |
