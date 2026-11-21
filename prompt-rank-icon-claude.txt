@@ -1,0 +1,64 @@
+BỐI CẢNH
+Người dùng có server Minecraft Java dùng LuckPerms và muốn hiện icon rank
+(OWNER, MEMBERS, ADMIN...) thay cho chữ trong chat/tab, bằng resource pack
+dùng ký tự Unicode Private Use Area (PUA). Ảnh rank do người dùng cung cấp.
+
+1. TẠO RESOURCE PACK
+- Cấu trúc:
+    pack.mcmeta
+    assets/minecraft/font/default.json
+    assets/minecraft/textures/font/ranks/<tên>.png
+- Mỗi rank là một PNG riêng, nền trong suốt, cao 9 px (rộng tuỳ ý).
+  Kiểm tra kích thước ảnh bằng PIL trước khi dùng.
+- Mỗi rank là một provider bitmap trong font/default.json:
+    { "type": "bitmap", "file": "minecraft:font/ranks/owner.png",
+      "ascent": 8, "height": 9, "chars": ["\uEC00"] }
+  (font default được gộp với font gốc của game, nên không cần thẻ font.)
+- Phải hỏi người dùng ký tự nào đã bị pack khác dùng. Ở đây \uE000 bị trùng,
+  nên dùng dải \uEC00 đến \uECFF (owner EC00, members EC01, admin EC02...).
+  Hai pack dùng cùng một ký tự thì game chỉ hiện một icon.
+- pack.mcmeta để dải pack_format rộng (pack_format, supported_formats,
+  min_format, max_format); nếu game báo không tương thích thì đổi theo
+  phiên bản game của người dùng.
+- Nên có tools/ranks.txt (mã hex và tên ảnh) kèm script build_font.py để
+  sinh lại default.json khi thêm rank. Zip lại thành RankPack.zip.
+- Người dùng cần bật pack (server.properties: resource-pack,
+  resource-pack-sha1, require-resource-pack=true) và cập nhật sha1 mỗi lần
+  đổi file. Thiếu pack thì ký tự hiện thành ô vuông trống.
+
+2. GÁN VÀO PREFIX LUCKPERMS (PHẦN DỄ SAI NHẤT)
+- KHÔNG BAO GIỜ bảo người dùng gõ "\uEC00" vào LuckPerms. LuckPerms lưu
+  nguyên văn, nên prefix chỉ là chữ "\uEC00" và không hiện icon.
+  \uXXXX chỉ có tác dụng trong JSON (ví dụ /tellraw) và trong file YAML
+  đặt giữa dấu nháy kép "" (TAB, Essentials). Trong nháy đơn '' thì không.
+- Cách đúng: prefix phải chứa KÝ TỰ THẬT. Ký tự PUA không có hình trong
+  font thường, nên nếu dán trong tin nhắn chat thì có thể bị mất hoặc
+  không nhìn thấy để kiểm tra được.
+- Quy trình đáng tin cậy:
+  a) Tạo file .txt UTF-8 bằng code (Python, open(..., encoding='utf-8')) có
+     chứa lệnh với ký tự thật, ví dụ:
+       /lp group owner meta setprefix 100 "&f<ký tự EC00> "
+     rồi đọc lại bytes để kiểm chứng (EC00 là EE B0 80 khi mã hóa UTF-8).
+  b) Gửi file đó cho người dùng, bảo mở bằng Notepad rồi copy từ đó.
+  c) Người dùng dán lệnh vào chat trong game (OP), hoặc dán giá trị
+     "&f<ký tự> " vào node PREFIX (weight 100) trong web editor /lp editor.
+     Tránh console Windows vì dễ hỏng mã hóa UTF-8.
+  d) Đặt &f (hoặc mã màu) trước ký tự vì màu chữ sẽ nhuộm icon, và để một
+     dấu cách sau ký tự.
+- Hỏi tên nhóm LuckPerms thật (ví dụ nhóm members có thể tên "default").
+
+3. KIỂM TRA
+- /tellraw @s {"text":"\uEC00 test"} : kiểm tra pack và ký tự đúng.
+- Mở lại web editor hoặc /lp group <nhóm> info : giá trị phải là
+  "&f" cộng một ô trống, và KHÔNG còn chữ "\uEC00".
+- Nếu LuckPerms đúng mà tab/chat không hiện icon: kiểm tra plugin hiển thị
+  (TAB dùng %luckperms_prefix%, EssentialsX Chat dùng {PREFIX} và cần Vault),
+  chạy /tab reload hoặc /essentials reload, và xem plugin có ghi đè prefix
+  hay chạy trên proxy không.
+
+4. QUY TẮC KHI LÀM VIỆC
+- Khi người dùng gửi thêm ảnh rank, kiểm tra ảnh thực sự có trong thư mục
+  upload và đo kích thước trước khi dùng. Nếu thiếu ảnh thì hỏi lại.
+- Mỗi rank mới nhận ký tự kế tiếp, cập nhật ranks.txt, sinh lại
+  default.json, zip lại, và cập nhật file lệnh LuckPerms chứa ký tự thật.
+- Người dùng nói tiếng Việt.
